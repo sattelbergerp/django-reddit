@@ -9,7 +9,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db.models import F, ExpressionWrapper
 from django.dispatch import receiver
-from django.db.models.signals import pre_save
+from django.db.models.signals import post_save, pre_save
 from django.template.defaultfilters import slugify
 from django.db.models import Case, Value, When
 
@@ -70,15 +70,13 @@ class Votable(Updateable):
         abstract = True
 
     def get_votable_type_code(self):
-        type_code = getattr(self, 'type_code', None)
-        if not type_code or len(type_code) != 1:
-            raise ValueError('Votable objects must define a single letter type code')
+        return type(self).type_code
 
     """Returns 'u' for upvotes, 'd' for downvotes None if the user hasn't voted"""
     def get_vote(self, user):
         votable_type = self.get_votable_type_code()
         try:
-            return Vote.get(user=user, target_type=votable_type, target=self.id).type
+            return Vote.objects.get(user=user, target_type=votable_type, target=self.id).type
         except Vote.DoesNotExist:
             return None
 
@@ -92,10 +90,10 @@ class Votable(Updateable):
                 vote_change = -1
                 score_change = -1
             else:
-                downvoted = self.remove_vote(user, 'd')
+                self.remove_vote(user, 'd')
                 self.add_vote(user, 'u')
-                vote_change += 0 if downvoted else 1
-                score_change += 2 if downvoted else 1
+                vote_change += 0 if current_vote == 'd' else 1
+                score_change += 2 if current_vote == 'd' else 1
 
         if type=='d':
             if current_vote == 'd':
@@ -103,14 +101,14 @@ class Votable(Updateable):
                 vote_change = -1
                 score_change = 1
             else:
-                upvoted = self.remove_vote(user, 'u')
+                self.remove_vote(user, 'u')
                 self.add_vote(user, 'd')
-                vote_change += 0 if upvoted else 1
-                score_change -= 2 if upvoted else 1
-        
+                vote_change += 0 if current_vote == 'u' else 1
+                score_change -= 2 if current_vote == 'u' else 1
+
         if vote_change or score_change:
             self.votes += vote_change
-            self.score += vote_change
+            self.score += score_change
             self.save()
 
     """Add a vote to the votes table does not affect cached scores or totals or check if a vote for this user already exists"""
@@ -121,6 +119,11 @@ class Votable(Updateable):
     def remove_vote(self, user, type):
         votable_type = self.get_votable_type_code()
         return Vote.objects.filter(user=user, target_type=votable_type, target=self.id, type=type).delete()[0]
+
+    @receiver(post_save)
+    def add_creator_vote_to_post(sender, instance, created, **kwargs):
+        if issubclass(sender, Votable) and created:
+            instance.vote(instance.user, 'u')
 
 class Vote(models.Model):
 

@@ -5,7 +5,7 @@ from json import dump
 from datetime import datetime, timedelta
 
 posts = []
-COUNT = 1000
+COUNT = 100
 
 TARGET_DIR = 'test-data'
 TARGET_FILE = 'posts.json'
