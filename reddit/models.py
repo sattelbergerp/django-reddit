@@ -9,9 +9,9 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db.models import F, ExpressionWrapper
 from django.dispatch import receiver
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, pre_save, pre_delete
 from django.template.defaultfilters import slugify
-from django.db.models import Case, Value, When
+from django.db.models import Case, When
 
 class Updateable(models.Model):
     created_on = models.DateTimeField(auto_now_add=True)
@@ -138,7 +138,9 @@ class Vote(models.Model):
 
 class User(AbstractUser):
     karma = models.IntegerField(default=0)
-    pass
+    
+    def get_absolute_url():
+        return '/'
 
 def validate_subreddit_name(value):
     if value in Subreddit.DISALLOWED_NAMES:
@@ -189,10 +191,22 @@ class Post(Votable):
     
 
 class Comment(Votable):
-    type_code = 'self'
+    type_code = 'c'
 
     post = models.ForeignKey(Post, on_delete=CASCADE)
     parent = models.ForeignKey('self', on_delete=CASCADE, null=True, blank=True)
     text = models.TextField(max_length=10000)
     deleted = models.BooleanField(default=False)
+    child_comment_count = models.IntegerField(default=0)
 
+    @receiver(post_save, sender='reddit.Comment')
+    def on_comment_added(sender, instance, created, **kwargs):
+        if instance.parent and created:
+            instance.parent.child_comment_count += 1
+            instance.parent.save()
+
+    @receiver(pre_delete, sender='reddit.Comment')
+    def on_comment_removed(sender, instance, **kwargs):
+        if instance.parent:
+            instance.parent.child_comment_count -= 1
+            instance.parent.save()

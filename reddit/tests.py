@@ -137,3 +137,27 @@ class PostVotableModelTest(TestCase):
         self.assertEquals(post.score, 1)
         self.assertEquals(post.votes, 1)
         self.assertEquals(post.get_vote(self.user2), None)
+
+class CommentModelTest(TestCase):
+
+    def setUp(self):
+        self.user = User.objects.create(username='test1', password='pjkwvb86hj')
+        self.post = Post.objects.create(title='test_new_post_title', text='test_new_post_text', user=self.user)
+
+    def test_adding_child_comments_correctly_updates_child_comment_count(self):
+        comment = self.post.comment_set.create(user=self.user, text='comment_text_1')
+        self.post.comment_set.create(user=self.user, text='comment_text_2', parent=comment)
+        self.assertEquals(comment.child_comment_count, 1)
+        self.post.comment_set.create(user=self.user, text='comment_text_3', parent=comment)
+        self.assertEquals(comment.child_comment_count, 2)
+
+    def test_removing_child_comments_correctly_updates_child_comment_count(self):
+        comment = self.post.comment_set.create(user=self.user, text='comment_text_1')
+        child1 = self.post.comment_set.create(user=self.user, text='comment_text_2', parent=comment)
+        
+        child2 = self.post.comment_set.create(user=self.user, text='comment_text_3', parent=comment)
+        self.assertEquals(comment.child_comment_count, 2)
+        child1.delete()
+        self.assertEquals(comment.child_comment_count, 1)
+        child2.delete()
+        self.assertEquals(comment.child_comment_count, 0)
