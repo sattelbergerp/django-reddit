@@ -5,24 +5,32 @@ from json import load
 from os.path import join
 from datetime import datetime, timedelta
 from django.utils.timezone import make_aware
+from pydoc import locate
 
 # Create your tests here.
 def load_objects_from_file(type, file, context={}):
     with open(join('test-data', file)) as f:
         entries = load(f)
-    return [create_object_from_data(type, data, context=context) for data in entries]
+    return [create_object_from_data(data, context=context) for data in entries]
 
-def create_object_from_data(type, data, context={}):
-    obj = type()
+def create_object_from_data(data, context={}, depth=0):
+    obj = locate(data['target_class'])()
+    if depth==0:
+        context['root'] = obj
     for key, value in data.items():
         if isinstance(value, str) and value.startswith('$'):
             setattr(obj, key, context[value[1:]])
+        elif isinstance(value, list):
+            pass
         elif key!='created_on' or key!='updated_on':
             setattr(obj, key, value)
+        
     obj.save()
     for key, value in data.items():
         if key=='created_on' or key=='updated_on':
             setattr(obj, key, make_aware(datetime.fromtimestamp(value)))
+        elif isinstance(value, list):
+            setattr(obj, key, [create_object_from_data(data, context={**context, 'parent': obj}, depth=depth+1) for data in value])
     obj.save()
     return obj
 
